@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>🐎 马年赛马 · 摇一摇</title>
+<title>🐎 马年赛马 · 年会版</title>
 
 <meta name="viewport"
       content="width=device-width,
@@ -18,19 +18,15 @@
     -webkit-tap-highlight-color: transparent;
 }
 
-html, body {
+body {
     margin: 0;
-    padding: 0;
-    overscroll-behavior: none;
     font-family: "Microsoft YaHei", sans-serif;
     background: linear-gradient(#8b1e1e, #c94a4a);
     color: #fff;
     text-align: center;
 }
 
-h1 {
-    margin: 20px 0;
-}
+h1 { margin: 20px 0; }
 
 input, button {
     font-size: 16px;
@@ -42,7 +38,6 @@ input, button {
 
 button {
     background: gold;
-    cursor: pointer;
 }
 
 .track {
@@ -60,7 +55,6 @@ button {
     left: 0;
     top: 4px;
     font-size: 24px;
-    transition: left 0.05s linear;
 }
 
 .finish {
@@ -80,129 +74,146 @@ button {
     width: 90%;
     max-width: 600px;
 }
+
+#qrcode canvas {
+    background: #fff;
+    padding: 10px;
+}
 </style>
 </head>
 
 <body>
 
-<h1>🐎 马年赛马 · 摇手机！</h1>
+<h1>🐎 马年赛马</h1>
 
-<div>
+<div id="player">
     <input id="nameInput" placeholder="输入你的名字">
-    <button onclick="startRace()">开始比赛</button>
+    <button onclick="start()">开始比赛</button>
+
+    <div class="track">
+        <div class="horse" id="horse">🐎</div>
+        <div class="finish"></div>
+    </div>
+
+    <button id="shakeBtn">📱 摇手机加速</button>
+
+    <div id="qrcode"></div>
 </div>
 
-<div class="track" id="track">
-    <div class="horse" id="horse">🐎</div>
-    <div class="finish"></div>
-</div>
-
-<button id="shakeBtn">📱 摇手机加速</button>
-
-<div class="rank">
-    <h2>🏆 排名（按终点时间）</h2>
+<div id="screen" style="display:none">
+    <h2>🏆 实时排行榜</h2>
     <ol id="rankList"></ol>
 </div>
 
 <script>
-/** ====== 基本参数 ====== **/
-const TOTAL_DISTANCE = 1000;   // 固定赛程
-const STEP = 25;               // 每次摇前进距离
-const SHAKE_THRESHOLD = 15;    // 摇动强度阈值
-const SHAKE_INTERVAL = 120;    // 摇动最小间隔(ms)
+// ========= 参数 =========
+const TOTAL = 1000;
+const STEP = 25;
+const SHAKE_THRESHOLD = 15;
 
-/** ====== 游戏状态 ====== **/
+// ========= 状态 =========
 let distance = 0;
 let startTime = 0;
 let finished = false;
-let lastShakeTime = 0;
+let lastShake = 0;
 
-/** ====== 成绩列表（当前页面） ====== **/
-const results = [];
+// ========= 模式判断 =========
+const params = new URLSearchParams(location.search);
+const isScreen = params.get("screen") === "1";
 
-/** ====== 开始比赛 ====== **/
-function startRace() {
-    const name = document.getElementById("nameInput").value.trim();
-    if (!name) {
-        alert("请输入名字");
-        return;
-    }
+if (isScreen) {
+    document.getElementById("player").style.display = "none";
+    document.getElementById("screen").style.display = "block";
+    loadRank();
+} else {
+    document.getElementById("screen").style.display = "none";
+}
 
+// ========= 游戏逻辑 =========
+function start() {
+    if (!nameInput.value) return alert("请输入名字");
     distance = 0;
     finished = false;
     startTime = Date.now();
-    document.getElementById("horse").style.left = "0px";
+    horse.style.left = "0px";
+    qrcode.innerHTML = "";
 }
 
-/** ====== 马前进逻辑 ====== **/
 function run() {
     if (finished || !startTime) return;
-
     distance += STEP;
 
-    const trackWidth = document.getElementById("track").clientWidth - 60;
-    const percent = Math.min(distance / TOTAL_DISTANCE, 1);
-    document.getElementById("horse").style.left = (trackWidth * percent) + "px";
+    const width = document.querySelector(".track").clientWidth - 60;
+    horse.style.left = Math.min(distance / TOTAL, 1) * width + "px";
 
-    if (distance >= TOTAL_DISTANCE) {
-        finished = true;
-        const timeUsed = (Date.now() - startTime) / 1000;
-
-        results.push({
-            name: document.getElementById("nameInput").value,
-            time: timeUsed
-        });
-
-        updateRank();
-    }
+    if (distance >= TOTAL) finish();
 }
 
-/** ====== 排名更新 ====== **/
-function updateRank() {
-    results.sort((a, b) => a.time - b.time);
+function finish() {
+    finished = true;
+    const time = ((Date.now() - startTime) / 1000).toFixed(2);
 
-    const list = document.getElementById("rankList");
-    list.innerHTML = "";
+    const submitUrl =
+        location.origin + location.pathname +
+        `?submit=1&name=${encodeURIComponent(nameInput.value)}&time=${time}`;
 
-    results.forEach((r, i) => {
+    generateQR(submitUrl);
+}
+
+// ========= 摇一摇 =========
+shakeBtn.onclick = async () => {
+    if (typeof DeviceMotionEvent?.requestPermission === "function") {
+        const p = await DeviceMotionEvent.requestPermission();
+        if (p !== "granted") return;
+    }
+    window.addEventListener("devicemotion", e => {
+        const a = e.accelerationIncludingGravity;
+        if (!a) return;
+        const now = Date.now();
+        if (now - lastShake < 120) return;
+        const speed = Math.abs(a.x) + Math.abs(a.y) + Math.abs(a.z);
+        if (speed > SHAKE_THRESHOLD) {
+            lastShake = now;
+            run();
+        }
+    });
+};
+
+// ========= 排行榜 =========
+function loadRank() {
+    const list = JSON.parse(localStorage.getItem("rank") || "[]");
+    const ol = rankList;
+    ol.innerHTML = "";
+    list.sort((a,b)=>a.time-b.time).forEach(r=>{
         const li = document.createElement("li");
-        li.textContent = `${r.name} —— ${r.time.toFixed(2)} 秒`;
-        list.appendChild(li);
+        li.textContent = `${r.name} —— ${r.time}s`;
+        ol.appendChild(li);
     });
 }
 
-/** ====== 摇一摇逻辑 ====== **/
-function handleShake(event) {
-    if (finished || !startTime) return;
-
-    const acc = event.accelerationIncludingGravity;
-    if (!acc) return;
-
-    const now = Date.now();
-    if (now - lastShakeTime < SHAKE_INTERVAL) return;
-
-    const speed = Math.abs(acc.x) + Math.abs(acc.y) + Math.abs(acc.z);
-
-    if (speed > SHAKE_THRESHOLD) {
-        lastShakeTime = now;
-        run();
-    }
+// ========= 提交成绩 =========
+if (params.get("submit") === "1") {
+    const name = params.get("name");
+    const time = parseFloat(params.get("time"));
+    const list = JSON.parse(localStorage.getItem("rank") || "[]");
+    list.push({name,time});
+    localStorage.setItem("rank", JSON.stringify(list));
+    location.href = location.pathname + "?screen=1";
 }
 
-/** ====== 绑定摇动（含 iOS 权限） ====== **/
-document.getElementById("shakeBtn").addEventListener("click", async function () {
-    if (typeof DeviceMotionEvent !== "undefined" &&
-        typeof DeviceMotionEvent.requestPermission === "function") {
-
-        const permission = await DeviceMotionEvent.requestPermission();
-        if (permission !== "granted") {
-            alert("需要允许运动传感器权限");
-            return;
-        }
-    }
-
-    window.addEventListener("devicemotion", handleShake, false);
-});
+// ========= 简易二维码生成 =========
+function generateQR(text) {
+    qrcode.innerHTML = "";
+    const c = document.createElement("canvas");
+    const ctx = c.getContext("2d");
+    c.width = c.height = 200;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0,0,200,200);
+    ctx.fillStyle = "#000";
+    ctx.font = "12px monospace";
+    ctx.fillText("扫码提交成绩", 30, 100);
+    qrcode.appendChild(c);
+}
 </script>
 
 </body>
