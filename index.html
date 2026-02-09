@@ -2,12 +2,26 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>🐎 马年赛马 · 年会小游戏</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🐎 马年赛马 · 摇一摇</title>
+
+<meta name="viewport"
+      content="width=device-width,
+               initial-scale=1.0,
+               maximum-scale=1.0,
+               user-scalable=no">
 
 <style>
-body {
+* {
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
     margin: 0;
+    padding: 0;
+    overscroll-behavior: none;
     font-family: "Microsoft YaHei", sans-serif;
     background: linear-gradient(#8b1e1e, #c94a4a);
     color: #fff;
@@ -71,7 +85,7 @@ button {
 
 <body>
 
-<h1>🐎 马年赛马 · 疯狂点！</h1>
+<h1>🐎 马年赛马 · 摇手机！</h1>
 
 <div>
     <input id="nameInput" placeholder="输入你的名字">
@@ -83,7 +97,7 @@ button {
     <div class="finish"></div>
 </div>
 
-<button onclick="run()">疯狂点我加速！</button>
+<button id="shakeBtn">📱 摇手机加速</button>
 
 <div class="rank">
     <h2>🏆 排名（按终点时间）</h2>
@@ -91,16 +105,22 @@ button {
 </div>
 
 <script>
+/** ====== 基本参数 ====== **/
 const TOTAL_DISTANCE = 1000;   // 固定赛程
-const STEP = 20;              // 每次点击前进距离
+const STEP = 25;               // 每次摇前进距离
+const SHAKE_THRESHOLD = 15;    // 摇动强度阈值
+const SHAKE_INTERVAL = 120;    // 摇动最小间隔(ms)
 
+/** ====== 游戏状态 ====== **/
 let distance = 0;
 let startTime = 0;
 let finished = false;
+let lastShakeTime = 0;
 
-// 所有玩家成绩（本页面）
+/** ====== 成绩列表（当前页面） ====== **/
 const results = [];
 
+/** ====== 开始比赛 ====== **/
 function startRace() {
     const name = document.getElementById("nameInput").value.trim();
     if (!name) {
@@ -114,6 +134,7 @@ function startRace() {
     document.getElementById("horse").style.left = "0px";
 }
 
+/** ====== 马前进逻辑 ====== **/
 function run() {
     if (finished || !startTime) return;
 
@@ -136,6 +157,7 @@ function run() {
     }
 }
 
+/** ====== 排名更新 ====== **/
 function updateRank() {
     results.sort((a, b) => a.time - b.time);
 
@@ -148,6 +170,39 @@ function updateRank() {
         list.appendChild(li);
     });
 }
+
+/** ====== 摇一摇逻辑 ====== **/
+function handleShake(event) {
+    if (finished || !startTime) return;
+
+    const acc = event.accelerationIncludingGravity;
+    if (!acc) return;
+
+    const now = Date.now();
+    if (now - lastShakeTime < SHAKE_INTERVAL) return;
+
+    const speed = Math.abs(acc.x) + Math.abs(acc.y) + Math.abs(acc.z);
+
+    if (speed > SHAKE_THRESHOLD) {
+        lastShakeTime = now;
+        run();
+    }
+}
+
+/** ====== 绑定摇动（含 iOS 权限） ====== **/
+document.getElementById("shakeBtn").addEventListener("click", async function () {
+    if (typeof DeviceMotionEvent !== "undefined" &&
+        typeof DeviceMotionEvent.requestPermission === "function") {
+
+        const permission = await DeviceMotionEvent.requestPermission();
+        if (permission !== "granted") {
+            alert("需要允许运动传感器权限");
+            return;
+        }
+    }
+
+    window.addEventListener("devicemotion", handleShake, false);
+});
 </script>
 
 </body>
