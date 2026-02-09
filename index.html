@@ -26,14 +26,12 @@ body {
     text-align: center;
 }
 
-h1 { margin: 20px 0; }
-
 input, button {
-    font-size: 16px;
     padding: 10px;
-    margin: 6px;
+    font-size: 16px;
     border-radius: 6px;
     border: none;
+    margin: 6px;
 }
 
 button {
@@ -68,16 +66,15 @@ button {
 
 .rank {
     background: rgba(0,0,0,0.3);
-    margin: 20px auto;
-    padding: 15px;
+    padding: 10px;
     border-radius: 10px;
     width: 90%;
     max-width: 600px;
+    margin: auto;
 }
 
-#qrcode canvas {
-    background: #fff;
-    padding: 10px;
+#qrcode {
+    margin-top: 15px;
 }
 </style>
 </head>
@@ -88,7 +85,7 @@ button {
 
 <div id="player">
     <input id="nameInput" placeholder="输入你的名字">
-    <button onclick="start()">开始比赛</button>
+    <button onclick="startRace()">开始</button>
 
     <div class="track">
         <div class="horse" id="horse">🐎</div>
@@ -101,36 +98,33 @@ button {
 </div>
 
 <div id="screen" style="display:none">
-    <h2>🏆 实时排行榜</h2>
+    <h2>🏆 排行榜</h2>
     <ol id="rankList"></ol>
 </div>
 
-<script>
-// ========= 参数 =========
-const TOTAL = 1000;
-const STEP = 25;
-const SHAKE_THRESHOLD = 15;
+<!-- 真二维码库 -->
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 
-// ========= 状态 =========
+<script>
+const TOTAL = 800;      // 更容易跑完
+const STEP = 40;
+const SHAKE_THRESHOLD = 14;
+
 let distance = 0;
 let startTime = 0;
 let finished = false;
 let lastShake = 0;
 
-// ========= 模式判断 =========
 const params = new URLSearchParams(location.search);
 const isScreen = params.get("screen") === "1";
 
 if (isScreen) {
-    document.getElementById("player").style.display = "none";
-    document.getElementById("screen").style.display = "block";
+    player.style.display = "none";
+    screen.style.display = "block";
     loadRank();
-} else {
-    document.getElementById("screen").style.display = "none";
 }
 
-// ========= 游戏逻辑 =========
-function start() {
+function startRace() {
     if (!nameInput.value) return alert("请输入名字");
     distance = 0;
     finished = false;
@@ -141,8 +135,8 @@ function start() {
 
 function run() {
     if (finished || !startTime) return;
-    distance += STEP;
 
+    distance += STEP;
     const width = document.querySelector(".track").clientWidth - 60;
     horse.style.left = Math.min(distance / TOTAL, 1) * width + "px";
 
@@ -157,20 +151,27 @@ function finish() {
         location.origin + location.pathname +
         `?submit=1&name=${encodeURIComponent(nameInput.value)}&time=${time}`;
 
-    generateQR(submitUrl);
+    qrcode.innerHTML = "<p>📸 扫码提交成绩</p>";
+    new QRCode(qrcode, {
+        text: submitUrl,
+        width: 200,
+        height: 200
+    });
 }
 
-// ========= 摇一摇 =========
 shakeBtn.onclick = async () => {
     if (typeof DeviceMotionEvent?.requestPermission === "function") {
         const p = await DeviceMotionEvent.requestPermission();
         if (p !== "granted") return;
     }
+
     window.addEventListener("devicemotion", e => {
         const a = e.accelerationIncludingGravity;
         if (!a) return;
+
         const now = Date.now();
         if (now - lastShake < 120) return;
+
         const speed = Math.abs(a.x) + Math.abs(a.y) + Math.abs(a.z);
         if (speed > SHAKE_THRESHOLD) {
             lastShake = now;
@@ -179,40 +180,24 @@ shakeBtn.onclick = async () => {
     });
 };
 
-// ========= 排行榜 =========
-function loadRank() {
-    const list = JSON.parse(localStorage.getItem("rank") || "[]");
-    const ol = rankList;
-    ol.innerHTML = "";
-    list.sort((a,b)=>a.time-b.time).forEach(r=>{
-        const li = document.createElement("li");
-        li.textContent = `${r.name} —— ${r.time}s`;
-        ol.appendChild(li);
-    });
-}
-
-// ========= 提交成绩 =========
 if (params.get("submit") === "1") {
-    const name = params.get("name");
-    const time = parseFloat(params.get("time"));
     const list = JSON.parse(localStorage.getItem("rank") || "[]");
-    list.push({name,time});
+    list.push({
+        name: params.get("name"),
+        time: parseFloat(params.get("time"))
+    });
     localStorage.setItem("rank", JSON.stringify(list));
     location.href = location.pathname + "?screen=1";
 }
 
-// ========= 简易二维码生成 =========
-function generateQR(text) {
-    qrcode.innerHTML = "";
-    const c = document.createElement("canvas");
-    const ctx = c.getContext("2d");
-    c.width = c.height = 200;
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(0,0,200,200);
-    ctx.fillStyle = "#000";
-    ctx.font = "12px monospace";
-    ctx.fillText("扫码提交成绩", 30, 100);
-    qrcode.appendChild(c);
+function loadRank() {
+    const list = JSON.parse(localStorage.getItem("rank") || "[]");
+    rankList.innerHTML = "";
+    list.sort((a,b)=>a.time-b.time).forEach(r=>{
+        const li = document.createElement("li");
+        li.textContent = `${r.name} —— ${r.time}s`;
+        rankList.appendChild(li);
+    });
 }
 </script>
 
